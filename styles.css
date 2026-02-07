@@ -1,0 +1,187 @@
+﻿:root {
+  --bg: #000000;
+  --fg: #b8c2cc;
+  --sig: #00e5ff;
+  --font: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 32px 1fr 72px;
+}
+
+.topbar,
+.telemetry {
+  border-bottom: 1px solid var(--fg);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  padding: 0 12px;
+}
+
+.topbar {
+  text-transform: uppercase;
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 240px 1fr 260px;
+  min-height: 0;
+}
+
+.panel,
+.field-wrap {
+  border-right: 1px solid var(--fg);
+  padding: 12px;
+  min-height: 0;
+}
+
+.panel-right {
+  border-right: 0;
+}
+
+h2 {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--sig);
+}
+
+.cluster {
+  border: 1px solid var(--fg);
+  padding: 8px;
+  margin-bottom: 14px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.value,
+.readouts span,
+.telemetry span,
+input,
+select {
+  color: var(--sig);
+}
+
+.control-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.control {
+  display: grid;
+  gap: 4px;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--fg);
+  background: transparent;
+  padding: 6px;
+  font: inherit;
+}
+
+input:focus,
+select:focus {
+  outline: 0;
+  border-color: var(--sig);
+}
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--fg);
+  padding: 8px;
+}
+
+.toggle-row input {
+  width: auto;
+  accent-color: var(--sig);
+}
+
+.field-wrap {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(8, 28px);
+  gap: 4px;
+  border: 1px solid var(--fg);
+  padding: 8px;
+  background:
+    linear-gradient(to right, transparent 95%, rgba(184, 194, 204, 0.16) 100%) 0 0 / 24px 24px,
+    linear-gradient(to bottom, transparent 95%, rgba(184, 194, 204, 0.16) 100%) 0 0 / 24px 24px;
+}
+
+.cell {
+  border: 1px solid var(--fg);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cell.hot {
+  border-color: var(--sig);
+  color: var(--sig);
+}
+
+.readouts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--fg);
+  padding: 8px;
+}
+
+.telemetry {
+  border-top: 1px solid var(--fg);
+  border-bottom: 0;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 980px) {
+  .app {
+    grid-template-rows: 32px 1fr 96px;
+  }
+
+  .main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    overflow: auto;
+  }
+
+  .panel,
+  .field-wrap {
+    border-right: 0;
+    border-bottom: 1px solid var(--fg);
+  }
+
+  .field {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(16, 26px);
+  }
+}

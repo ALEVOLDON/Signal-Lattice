@@ -1,0 +1,100 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signal Lattice</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>MODE: <span id="modeLabel">A</span></div>
+      <div>CLOCK: <span id="clock">120</span></div>
+      <div>FAULT: <span id="fault">00</span></div>
+      <div>AUDIO: <span id="audioState">ARM</span></div>
+    </header>
+
+    <section class="main">
+      <aside class="panel">
+        <h2>SOURCE BUS</h2>
+        <div class="cluster">
+          <div class="row"><span>IMPULSE</span><span class="value" id="impulse">0.00</span></div>
+          <div class="row"><span>NOISE</span><span class="value" id="noise">0.00</span></div>
+          <div class="row"><span>EXT-IN</span><span class="value" id="extin">0.00</span></div>
+        </div>
+
+        <h2>REGISTERS</h2>
+        <div class="cluster control-grid">
+          <label class="control">
+            <span>RATE DIVIDER</span>
+            <input id="rateDivider" type="number" min="1" max="16" value="4" />
+          </label>
+          <label class="control">
+            <span>PHASE OFFSET</span>
+            <input id="phaseOffset" type="number" min="0" max="31" value="2" />
+          </label>
+          <label class="control">
+            <span>MUTATION SEED</span>
+            <input id="mutationSeed" type="number" min="0" max="999" value="127" />
+          </label>
+        </div>
+      </aside>
+
+      <main class="field-wrap">
+        <h2>ROUTING FIELD 12x8</h2>
+        <div id="routingField" class="field" aria-label="Routing matrix"></div>
+        <div class="readouts">
+          <div>IN: <span id="inLevel">0.00</span></div>
+          <div>OUT: <span id="outLevel">0.00</span></div>
+          <div>LOSS: <span id="lossLevel">0.00</span></div>
+        </div>
+      </main>
+
+      <aside class="panel panel-right">
+        <h2>CONSTRAINT CORE</h2>
+        <div class="cluster control-grid">
+          <label class="control">
+            <span>ROUTING MODE</span>
+            <select id="routingMode">
+              <option value="A" selected>A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>THRESHOLD LINE</span>
+            <input id="threshold" type="number" min="0" max="1" step="0.01" value="0.35" />
+          </label>
+          <label class="control">
+            <span>LIMITER WINDOW</span>
+            <input id="limiter" type="number" min="0" max="1" step="0.01" value="0.80" />
+          </label>
+          <label class="control">
+            <span>ROUTE WEIGHT</span>
+            <input id="routeWeight" type="number" min="0" max="255" value="160" />
+          </label>
+        </div>
+
+        <h2>LOCK REGISTER</h2>
+        <label class="toggle-row">
+          <span>HOLD</span>
+          <input id="lockRegister" type="checkbox" />
+        </label>
+      </aside>
+    </section>
+
+    <footer class="telemetry">
+      <div>AMP <span id="amp">0.00/0.00</span></div>
+      <div>DENS <span id="dens">0</span></div>
+      <div>JITTER <span id="jitter">0.00</span></div>
+      <div>CLIP <span id="clip">0 ms</span></div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
