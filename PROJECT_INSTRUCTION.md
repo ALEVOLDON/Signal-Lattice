@@ -136,3 +136,9 @@
 1. Сверяться с этим документом и ограничениями из раздела 2.
 2. Любую новую функцию добавлять так, чтобы она усиливала образ системы наблюдения/контроля, а не превращала инструмент в обычный UI.
 3. Не выходить за палитру, типографику и логику сигнального минимализма.
+
+## Update Log
+- Added fault intensity control (`FAULT INTENSITY`) from 0..100.
+- Added adaptive fault switching (`AUTO FAULT`) driven by telemetry pressure.
+- Added `FAULT ACTUAL` readout to show effective profile after auto-resolution.
+- Snapshot now stores/restores `faultIntensity` and `faultAuto`.

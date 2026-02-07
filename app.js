@@ -14,6 +14,7 @@ const ui = {
   noise: document.getElementById("noise"),
   extin: document.getElementById("extin"),
   fault: document.getElementById("fault"),
+  faultActual: document.getElementById("faultActual"),
   clock: document.getElementById("clock"),
   audioState: document.getElementById("audioState"),
   modeLabel: document.getElementById("modeLabel"),
@@ -28,6 +29,8 @@ const controls = {
   routeWeight: document.getElementById("routeWeight"),
   lockRegister: document.getElementById("lockRegister"),
   faultProfile: document.getElementById("faultProfile"),
+  faultIntensity: document.getElementById("faultIntensity"),
+  faultAuto: document.getElementById("faultAuto"),
   routingMode: document.getElementById("routingMode"),
   snapshotSlot: document.getElementById("snapshotSlot"),
   snapshotWrite: document.getElementById("snapshotWrite"),
@@ -45,6 +48,7 @@ let peak = 0;
 let tick = 0;
 let prevOut = 0;
 let audioEngine = null;
+const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
 
@@ -84,6 +88,21 @@ function setSnapshotState(text) {
   snapshotState.textContent = text;
 }
 
+function resolveFaultProfile(selectedProfile, autoEnabled, intensity) {
+  if (!autoEnabled) return selectedProfile;
+
+  const pressure =
+    (telemetryMemory.overloaded ? 1 : 0) +
+    (telemetryMemory.jitter > 0.12 ? 1 : 0) +
+    (telemetryMemory.density > 0.5 ? 1 : 0) +
+    (telemetryMemory.inLevel > 0.6 ? 1 : 0);
+
+  if (pressure >= 3 || (intensity > 0.75 && telemetryMemory.jitter > 0.16)) return "31";
+  if (pressure >= 2) return "21";
+  if (pressure >= 1) return "11";
+  return "00";
+}
+
 function getActiveMap() {
   return cells.map((cell) => (cell.dataset.active === "1" ? 1 : 0));
 }
@@ -106,6 +125,8 @@ function createSnapshot() {
       limiter: Number(controls.limiter.value),
       routeWeight: Number(controls.routeWeight.value),
       faultProfile: controls.faultProfile.value,
+      faultIntensity: Number(controls.faultIntensity.value),
+      faultAuto: controls.faultAuto.checked,
       routingMode: controls.routingMode.value,
       lockRegister: controls.lockRegister.checked,
     },
@@ -123,6 +144,8 @@ function applySnapshot(snapshot) {
   controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
   controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
   controls.faultProfile.value = ["00", "11", "21", "31"].includes(state.faultProfile) ? state.faultProfile : "00";
+  controls.faultIntensity.value = String(clamp(Number(state.faultIntensity) || 55, 0, 100));
+  controls.faultAuto.checked = Boolean(state.faultAuto);
   controls.routingMode.value = ["A", "B", "C"].includes(state.routingMode) ? state.routingMode : "A";
   controls.lockRegister.checked = Boolean(state.lockRegister);
   if (Array.isArray(snapshot.matrix) && snapshot.matrix.length === cells.length) {
@@ -290,15 +313,18 @@ function frame() {
   const limiter = clamp(Number(controls.limiter.value) || 0.8, 0, 1);
   const routeWeight = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
   const seed = Number(controls.mutationSeed.value) || 0;
-  const faultProfile = controls.faultProfile.value || "00";
+  const selectedFaultProfile = controls.faultProfile.value || "00";
+  const faultIntensity = clamp(Number(controls.faultIntensity.value) || 55, 0, 100) / 100;
+  const faultProfile = resolveFaultProfile(selectedFaultProfile, controls.faultAuto.checked, faultIntensity);
   const mode = controls.routingMode.value || "A";
 
   const impulse = ((tick + phaseOffset) % (rateDivider * 2) === 0) ? 1 : 0;
   const noise = seedNoise(seed + tick * 0.07);
   const extIn = seedNoise(seed * 0.31 + tick * 0.03);
-  const drift = (seedNoise(seed * 0.77 + tick * 0.02) - 0.5) * 0.36;
+  const drift = (seedNoise(seed * 0.77 + tick * 0.02) - 0.5) * (0.14 + faultIntensity * 0.46);
   const thresholdUsed = clamp(threshold + (faultProfile === "21" ? drift : 0), 0, 1);
-  const burst = faultProfile === "31" && seedNoise(seed + tick * 0.19) > 0.94 ? 1 : 0;
+  const burstGate = 0.97 - faultIntensity * 0.08;
+  const burst = faultProfile === "31" && seedNoise(seed + tick * 0.19) > burstGate ? 1 : 0;
 
   let activeCount = 0;
   let weightedSum = 0;
@@ -325,7 +351,7 @@ function frame() {
     }
 
     if (faultProfile === "11") {
-      hot = hot && seedNoise(seed + tick * 0.11 + i * 0.23) > 0.25;
+      hot = hot && seedNoise(seed + tick * 0.11 + i * 0.23) > (0.15 + faultIntensity * 0.35);
     } else if (faultProfile === "31" && burst === 1 && baseActive && i % 3 === tick % 3) {
       hot = true;
     }
@@ -334,7 +360,7 @@ function frame() {
 
     if (hot) {
       activeCount += 1;
-      const burstLift = faultProfile === "31" && burst === 1 ? 0.25 : 0;
+      const burstLift = faultProfile === "31" && burst === 1 ? 0.1 + faultIntensity * 0.35 : 0;
       weightedSum += ((noise + extIn + impulse) / 3) + burstLift;
     }
   }
@@ -343,11 +369,11 @@ function frame() {
   const inLevel = (impulse * 0.5 + noise * 0.3 + extIn * 0.2);
   let rawOut = (weightedSum / Math.max(activeCount, 1)) * density * routeWeight;
   if (faultProfile === "11") {
-    rawOut *= 0.72;
+    rawOut *= 1 - (0.12 + faultIntensity * 0.28);
   } else if (faultProfile === "21") {
-    rawOut *= clamp(0.85 + Math.sin(tick * 0.07) * 0.25, 0.5, 1.2);
+    rawOut *= clamp(0.85 + Math.sin(tick * 0.07) * (0.1 + faultIntensity * 0.2), 0.5, 1.2);
   } else if (faultProfile === "31") {
-    rawOut *= 1 + burst * 0.9;
+    rawOut *= 1 + burst * (0.35 + faultIntensity * 0.9);
   }
   const outLevel = clamp(rawOut, 0, limiter);
   const lossLevel = clamp(inLevel - outLevel, 0, 1);
@@ -371,6 +397,7 @@ function frame() {
   ui.noise.textContent = noise.toFixed(2);
   ui.extin.textContent = extIn.toFixed(2);
   ui.modeLabel.textContent = mode;
+  ui.faultActual.textContent = faultProfile;
 
   ui.clock.textContent = String(120 + Math.floor(density * 28));
   const overloaded = rawOut > limiter;
@@ -406,15 +433,15 @@ function frame() {
     }
 
     if (faultProfile === "11") {
-      gainTarget *= 0.6;
-      cutoff *= 0.7;
+      gainTarget *= 1 - (0.15 + faultIntensity * 0.35);
+      cutoff *= 1 - (0.12 + faultIntensity * 0.3);
     } else if (faultProfile === "21") {
       cutoff *= clamp(1 + drift, 0.65, 1.45);
-      modFreq *= clamp(1 + drift * 0.8, 0.7, 1.4);
+      modFreq *= clamp(1 + drift * (0.4 + faultIntensity), 0.7, 1.4);
     } else if (faultProfile === "31" && burst === 1) {
-      gainTarget = clamp(gainTarget * 1.4, 0.0001, 0.22);
-      cutoff *= 1.3;
-      modFreq *= 1.25;
+      gainTarget = clamp(gainTarget * (1.15 + faultIntensity * 0.5), 0.0001, 0.22);
+      cutoff *= 1.1 + faultIntensity * 0.4;
+      modFreq *= 1.05 + faultIntensity * 0.45;
     }
 
     audioEngine.master.gain.setTargetAtTime(gainTarget, t, 0.05);
@@ -423,6 +450,11 @@ function frame() {
     audioEngine.oscA.frequency.setTargetAtTime(baseFreq, t, 0.05);
     audioEngine.oscB.frequency.setTargetAtTime(modFreq, t, 0.05);
   }
+
+  telemetryMemory.density = density;
+  telemetryMemory.jitter = jitter;
+  telemetryMemory.inLevel = inLevel;
+  telemetryMemory.overloaded = overloaded;
 }
 
 buildGrid();

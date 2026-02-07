@@ -67,6 +67,15 @@
             </select>
           </label>
           <label class="control">
+            <span>FAULT INTENSITY</span>
+            <input id="faultIntensity" type="number" min="0" max="100" value="55" />
+          </label>
+          <label class="toggle-row">
+            <span>AUTO FAULT</span>
+            <input id="faultAuto" type="checkbox" />
+          </label>
+          <div class="row"><span>FAULT ACTUAL</span><span class="value" id="faultActual">00</span></div>
+          <label class="control">
             <span>ROUTING MODE</span>
             <select id="routingMode">
               <option value="A" selected>A</option>
