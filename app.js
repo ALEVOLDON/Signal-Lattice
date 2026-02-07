@@ -13,6 +13,7 @@ const ui = {
   impulse: document.getElementById("impulse"),
   noise: document.getElementById("noise"),
   extin: document.getElementById("extin"),
+  micState: document.getElementById("micState"),
   fault: document.getElementById("fault"),
   faultActual: document.getElementById("faultActual"),
   clock: document.getElementById("clock"),
@@ -24,6 +25,8 @@ const controls = {
   rateDivider: document.getElementById("rateDivider"),
   phaseOffset: document.getElementById("phaseOffset"),
   mutationSeed: document.getElementById("mutationSeed"),
+  extSource: document.getElementById("extSource"),
+  micArm: document.getElementById("micArm"),
   threshold: document.getElementById("threshold"),
   limiter: document.getElementById("limiter"),
   routeWeight: document.getElementById("routeWeight"),
@@ -49,6 +52,7 @@ let peak = 0;
 let tick = 0;
 let prevOut = 0;
 let audioEngine = null;
+let micInput = null;
 const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
@@ -101,6 +105,20 @@ function isValidSnapshotPayload(payload) {
   return true;
 }
 
+function sampleMicLevel() {
+  if (!micInput || !micInput.analyser) return 0;
+  const analyser = micInput.analyser;
+  const data = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 1) {
+    const centered = (data[i] - 128) / 128;
+    sum += centered * centered;
+  }
+  const rms = Math.sqrt(sum / data.length);
+  return clamp(rms * 3.2, 0, 1);
+}
+
 function resolveFaultProfile(selectedProfile, autoEnabled, intensity) {
   if (!autoEnabled) return selectedProfile;
 
@@ -134,6 +152,7 @@ function createSnapshot() {
       rateDivider: Number(controls.rateDivider.value),
       phaseOffset: Number(controls.phaseOffset.value),
       mutationSeed: Number(controls.mutationSeed.value),
+      extSource: controls.extSource.value,
       threshold: Number(controls.threshold.value),
       limiter: Number(controls.limiter.value),
       routeWeight: Number(controls.routeWeight.value),
@@ -153,6 +172,7 @@ function applySnapshot(snapshot) {
   controls.rateDivider.value = String(clamp(Number(state.rateDivider) || 1, 1, 16));
   controls.phaseOffset.value = String(clamp(Number(state.phaseOffset) || 0, 0, 31));
   controls.mutationSeed.value = String(clamp(Number(state.mutationSeed) || 0, 0, 999));
+  controls.extSource.value = state.extSource === "MIC" ? "MIC" : "SYN";
   controls.threshold.value = String(clamp(Number(state.threshold) || 0.35, 0, 1));
   controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
   controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
@@ -299,11 +319,13 @@ function initAudio() {
 
   const ctx = new AudioContext();
   const master = ctx.createGain();
+  const inputBus = ctx.createGain();
   const filter = ctx.createBiquadFilter();
   const oscA = ctx.createOscillator();
   const oscB = ctx.createOscillator();
 
   master.gain.value = 0.0001;
+  inputBus.gain.value = 1;
   filter.type = "bandpass";
   filter.frequency.value = 220;
   filter.Q.value = 6;
@@ -313,16 +335,52 @@ function initAudio() {
   oscB.type = "square";
   oscB.frequency.value = 55;
 
-  oscA.connect(filter);
-  oscB.connect(filter);
+  oscA.connect(inputBus);
+  oscB.connect(inputBus);
+  inputBus.connect(filter);
   filter.connect(master);
   master.connect(ctx.destination);
 
   oscA.start();
   oscB.start();
 
-  audioEngine = { ctx, master, filter, oscA, oscB };
+  audioEngine = { ctx, master, inputBus, filter, oscA, oscB };
   ui.audioState.textContent = "LIVE";
+}
+
+async function armMicInput() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    ui.micState.textContent = "N/A";
+    return;
+  }
+
+  try {
+    initAudio();
+    if (audioEngine && audioEngine.ctx.state === "suspended") {
+      await audioEngine.ctx.resume();
+    }
+    if (micInput && micInput.stream) {
+      ui.micState.textContent = "LIVE";
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const source = audioEngine.ctx.createMediaStreamSource(stream);
+    const analyser = audioEngine.ctx.createAnalyser();
+    const micGain = audioEngine.ctx.createGain();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.85;
+    micGain.gain.value = 0.8;
+
+    source.connect(analyser);
+    analyser.connect(micGain);
+    micGain.connect(audioEngine.inputBus);
+
+    micInput = { stream, source, analyser, micGain };
+    ui.micState.textContent = "LIVE";
+  } catch (_err) {
+    ui.micState.textContent = "DENY";
+  }
 }
 
 function armAudioOnce() {
@@ -339,6 +397,7 @@ function armAudioOnce() {
 
 document.addEventListener("pointerdown", armAudioOnce, { once: true });
 document.addEventListener("keydown", armAudioOnce, { once: true });
+controls.micArm.addEventListener("click", armMicInput);
 
 function frame() {
   tick += 1;
@@ -349,6 +408,7 @@ function frame() {
   const limiter = clamp(Number(controls.limiter.value) || 0.8, 0, 1);
   const routeWeight = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
   const seed = Number(controls.mutationSeed.value) || 0;
+  const extSource = controls.extSource.value || "SYN";
   const selectedFaultProfile = controls.faultProfile.value || "00";
   const faultIntensity = clamp(Number(controls.faultIntensity.value) || 55, 0, 100) / 100;
   const faultProfile = resolveFaultProfile(selectedFaultProfile, controls.faultAuto.checked, faultIntensity);
@@ -356,7 +416,9 @@ function frame() {
 
   const impulse = ((tick + phaseOffset) % (rateDivider * 2) === 0) ? 1 : 0;
   const noise = seedNoise(seed + tick * 0.07);
-  const extIn = seedNoise(seed * 0.31 + tick * 0.03);
+  const extSynthetic = seedNoise(seed * 0.31 + tick * 0.03);
+  const extMic = sampleMicLevel();
+  const extIn = extSource === "MIC" ? extMic : extSynthetic;
   const drift = (seedNoise(seed * 0.77 + tick * 0.02) - 0.5) * (0.14 + faultIntensity * 0.46);
   const thresholdUsed = clamp(threshold + (faultProfile === "21" ? drift : 0), 0, 1);
   const burstGate = 0.97 - faultIntensity * 0.08;

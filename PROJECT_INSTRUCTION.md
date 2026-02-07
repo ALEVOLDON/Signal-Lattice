@@ -145,3 +145,7 @@
 - Snapshot import now validates schema version (`signal-lattice-snapshot-pack-v1`).
 - Added merge mode for import (`MERGE IMPORT`): preserve missing slots.
 - Added replace mode for import (disable `MERGE IMPORT`): clear slots before import.
+- Added external source selector (`EXT SOURCE`): `SYNTHETIC` or `MIC INPUT`.
+- Added `ARM MIC` flow via `getUserMedia` and live mic level sampling.
+- `EXT-IN` can now be driven by live microphone signal.
+- Snapshot now stores/restores selected external source mode.

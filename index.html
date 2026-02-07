@@ -25,10 +25,19 @@
           <div class="row"><span>IMPULSE</span><span class="value" id="impulse">0.00</span></div>
           <div class="row"><span>NOISE</span><span class="value" id="noise">0.00</span></div>
           <div class="row"><span>EXT-IN</span><span class="value" id="extin">0.00</span></div>
+          <div class="row"><span>MIC</span><span class="value" id="micState">OFF</span></div>
         </div>
 
         <h2>REGISTERS</h2>
         <div class="cluster control-grid">
+          <label class="control">
+            <span>EXT SOURCE</span>
+            <select id="extSource">
+              <option value="SYN" selected>SYNTHETIC</option>
+              <option value="MIC">MIC INPUT</option>
+            </select>
+          </label>
+          <button id="micArm" class="action-unit" type="button">ARM MIC</button>
           <label class="control">
             <span>RATE DIVIDER</span>
             <input id="rateDivider" type="number" min="1" max="16" value="4" />
