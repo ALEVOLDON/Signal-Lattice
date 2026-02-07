@@ -49,11 +49,21 @@ Design goals:
 - source selector:
   - `SYNTHETIC`
   - `MIC INPUT`
+  - `CAM MOTION`
 - mic arming via `ARM MIC` (`getUserMedia`)
 - microphone diagnostics:
   - `MIC` status (`OFF/LIVE/DENY/N/A`)
   - `MIC LEVEL` value
   - level bar + peak hold indicator
+- camera arming via `ARM CAM` (`getUserMedia`)
+- camera diagnostics:
+  - `CAM` status (`OFF/LIVE/DENY/N/A`)
+  - `CAM MOTION` value
+  - `CAM LIGHT` value
+  - motion bar + peak hold indicator
+  - live preview panel
+- optional camera-driven modulation:
+  - `CAM MOD` influences threshold, route weight, and fault intensity
 
 ### Monitoring + Scope
 - readouts:
@@ -133,8 +143,13 @@ Notes:
    - click `ARM MIC`
    - allow mic access
    - set `EXT SOURCE = MIC INPUT`
-8. Monitor response via telemetry + scope.
-9. Save states into snapshot slots.
+8. (Optional) Enable camera input:
+   - click `ARM CAM`
+   - allow camera access
+   - set `EXT SOURCE = CAM MOTION`
+   - toggle `CAM MOD` to enable camera-driven modulation
+9. Monitor response via telemetry + scope.
+10. Save states into snapshot slots.
 
 ## Snapshot JSON Format
 
@@ -166,6 +181,7 @@ Current palette:
 - No external clock sync yet.
 - No formal scene-morph engine yet.
 - Microphone path currently focuses on level-driven behavior, not advanced dynamics control.
+- Camera path currently focuses on motion/luma sensing, not full vision tracking.
 
 ## Roadmap (Next)
 

@@ -73,6 +73,7 @@
   - `Limiter Window`
   - `Route Weight`
   - `Lock Register`
+  - `CAM MOD` (опциональная модуляция от камеры)
 
 ### Телеметрия
 - Реальное обновление `IN / OUT / LOSS`
@@ -105,6 +106,7 @@
   - значения всех регистров
   - текущий режим маршрутизации
   - состояние `Lock Register`
+  - выбранный источник `EXT SOURCE` (`SYN/MIC/CAM`)
 - Доступны операции:
   - экспорт всех 3 слотов в `.json`
   - импорт `.json` обратно в слоты
@@ -156,3 +158,8 @@
 - Snapshot now stores/restores drive and space parameters.
 - Added optional `Tone.js` rich synthesis layer with `RICH LAYER` and `RICH MIX`.
 - Rich layer is mapped to impulse/routing states and saved inside snapshots.
+- Added camera input arming (`ARM CAM`) with browser permission flow.
+- Added camera telemetry (`CAM MOTION`, `CAM LIGHT`) and preview panel.
+- Added camera as external source (`EXT SOURCE = CAM MOTION`).
+- Added optional camera-driven modulation (`CAM MOD`) for threshold, route weight, and fault intensity.
+- Snapshot now stores/restores camera modulation state and camera source selection.
