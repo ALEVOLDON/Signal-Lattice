@@ -27,6 +27,7 @@ const controls = {
   limiter: document.getElementById("limiter"),
   routeWeight: document.getElementById("routeWeight"),
   lockRegister: document.getElementById("lockRegister"),
+  faultProfile: document.getElementById("faultProfile"),
   routingMode: document.getElementById("routingMode"),
   snapshotSlot: document.getElementById("snapshotSlot"),
   snapshotWrite: document.getElementById("snapshotWrite"),
@@ -101,6 +102,7 @@ function createSnapshot() {
       threshold: Number(controls.threshold.value),
       limiter: Number(controls.limiter.value),
       routeWeight: Number(controls.routeWeight.value),
+      faultProfile: controls.faultProfile.value,
       routingMode: controls.routingMode.value,
       lockRegister: controls.lockRegister.checked,
     },
@@ -117,6 +119,7 @@ function applySnapshot(snapshot) {
   controls.threshold.value = String(clamp(Number(state.threshold) || 0.35, 0, 1));
   controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
   controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
+  controls.faultProfile.value = ["00", "11", "21", "31"].includes(state.faultProfile) ? state.faultProfile : "00";
   controls.routingMode.value = ["A", "B", "C"].includes(state.routingMode) ? state.routingMode : "A";
   controls.lockRegister.checked = Boolean(state.lockRegister);
   if (Array.isArray(snapshot.matrix) && snapshot.matrix.length === cells.length) {
@@ -231,11 +234,15 @@ function frame() {
   const limiter = clamp(Number(controls.limiter.value) || 0.8, 0, 1);
   const routeWeight = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
   const seed = Number(controls.mutationSeed.value) || 0;
+  const faultProfile = controls.faultProfile.value || "00";
   const mode = controls.routingMode.value || "A";
 
   const impulse = ((tick + phaseOffset) % (rateDivider * 2) === 0) ? 1 : 0;
   const noise = seedNoise(seed + tick * 0.07);
   const extIn = seedNoise(seed * 0.31 + tick * 0.03);
+  const drift = (seedNoise(seed * 0.77 + tick * 0.02) - 0.5) * 0.36;
+  const thresholdUsed = clamp(threshold + (faultProfile === "21" ? drift : 0), 0, 1);
+  const burst = faultProfile === "31" && seedNoise(seed + tick * 0.19) > 0.94 ? 1 : 0;
 
   let activeCount = 0;
   let weightedSum = 0;
@@ -251,27 +258,41 @@ function frame() {
     let hot = false;
 
     if (mode === "A") {
-      hot = baseActive && (impulse > 0 || mutation || extIn > threshold);
+      hot = baseActive && (impulse > 0 || mutation || extIn > thresholdUsed);
     } else if (mode === "B") {
-      hot = baseActive && (diagonalGate || extIn > threshold * 0.8) && noise > 0.18;
+      hot = baseActive && (diagonalGate || extIn > thresholdUsed * 0.8) && noise > 0.18;
     } else {
-      hot = baseActive && (mutation || (impulse > 0 && phaseGate) || extIn > threshold * 0.6);
+      hot = baseActive && (mutation || (impulse > 0 && phaseGate) || extIn > thresholdUsed * 0.6);
       if (((tick + row) % (rateDivider + 1)) === 0 && noise > 0.4) {
         hot = !hot;
       }
+    }
+
+    if (faultProfile === "11") {
+      hot = hot && seedNoise(seed + tick * 0.11 + i * 0.23) > 0.25;
+    } else if (faultProfile === "31" && burst === 1 && baseActive && i % 3 === tick % 3) {
+      hot = true;
     }
 
     c.classList.toggle("hot", hot);
 
     if (hot) {
       activeCount += 1;
-      weightedSum += (noise + extIn + impulse) / 3;
+      const burstLift = faultProfile === "31" && burst === 1 ? 0.25 : 0;
+      weightedSum += ((noise + extIn + impulse) / 3) + burstLift;
     }
   }
 
   const density = activeCount / cells.length;
   const inLevel = (impulse * 0.5 + noise * 0.3 + extIn * 0.2);
-  const rawOut = (weightedSum / Math.max(activeCount, 1)) * density * routeWeight;
+  let rawOut = (weightedSum / Math.max(activeCount, 1)) * density * routeWeight;
+  if (faultProfile === "11") {
+    rawOut *= 0.72;
+  } else if (faultProfile === "21") {
+    rawOut *= clamp(0.85 + Math.sin(tick * 0.07) * 0.25, 0.5, 1.2);
+  } else if (faultProfile === "31") {
+    rawOut *= 1 + burst * 0.9;
+  }
   const outLevel = clamp(rawOut, 0, limiter);
   const lossLevel = clamp(inLevel - outLevel, 0, 1);
 
@@ -296,11 +317,20 @@ function frame() {
   ui.modeLabel.textContent = mode;
 
   ui.clock.textContent = String(120 + Math.floor(density * 28));
-  ui.fault.textContent = rawOut > limiter ? "01" : "00";
+  const overloaded = rawOut > limiter;
+  if (faultProfile === "00") {
+    ui.fault.textContent = overloaded ? "01" : "00";
+  } else if (faultProfile === "11") {
+    ui.fault.textContent = overloaded ? "12" : "11";
+  } else if (faultProfile === "21") {
+    ui.fault.textContent = overloaded ? "22" : "21";
+  } else {
+    ui.fault.textContent = burst === 1 ? "33" : overloaded ? "32" : "31";
+  }
 
   if (audioEngine) {
     const t = audioEngine.ctx.currentTime;
-    const gainTarget = clamp(outLevel * 0.16, 0.0001, 0.22);
+    let gainTarget = clamp(outLevel * 0.16, 0.0001, 0.22);
     let cutoff = 80 + density * 2600 + threshold * 1200;
     let baseFreq = 40 + routeWeight * 180 + phaseOffset * 2;
     let modFreq = baseFreq * (1 + impulse * 0.5 + jitter);
@@ -317,6 +347,18 @@ function frame() {
       cutoff = 70 + density * 1800 + extIn * 900;
       baseFreq = 30 + routeWeight * 140 + (1 - threshold) * 90;
       modFreq = baseFreq * (1.2 + impulse * 0.7 + noise * 0.6);
+    }
+
+    if (faultProfile === "11") {
+      gainTarget *= 0.6;
+      cutoff *= 0.7;
+    } else if (faultProfile === "21") {
+      cutoff *= clamp(1 + drift, 0.65, 1.45);
+      modFreq *= clamp(1 + drift * 0.8, 0.7, 1.4);
+    } else if (faultProfile === "31" && burst === 1) {
+      gainTarget = clamp(gainTarget * 1.4, 0.0001, 0.22);
+      cutoff *= 1.3;
+      modFreq *= 1.25;
     }
 
     audioEngine.master.gain.setTargetAtTime(gainTarget, t, 0.05);

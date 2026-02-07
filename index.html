@@ -58,6 +58,15 @@
         <h2>CONSTRAINT CORE</h2>
         <div class="cluster control-grid">
           <label class="control">
+            <span>FAULT PROFILE</span>
+            <select id="faultProfile">
+              <option value="00" selected>00 NOMINAL</option>
+              <option value="11">11 CHOKE</option>
+              <option value="21">21 DRIFT</option>
+              <option value="31">31 BURST</option>
+            </select>
+          </label>
+          <label class="control">
             <span>ROUTING MODE</span>
             <select id="routingMode">
               <option value="A" selected>A</option>
