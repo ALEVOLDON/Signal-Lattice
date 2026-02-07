@@ -1,6 +1,7 @@
 ﻿const rows = 8;
 const cols = 12;
 const field = document.getElementById("routingField");
+const scopeCanvas = document.getElementById("scopeCanvas");
 
 const ui = {
   inLevel: document.getElementById("inLevel"),
@@ -61,6 +62,9 @@ let audioEngine = null;
 let micInput = null;
 let lastDriveValue = -1;
 let micPeakHold = 0;
+let scopeCtx = null;
+let scopeLoopStarted = false;
+let scopeData = null;
 const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
@@ -100,6 +104,53 @@ function clamp(value, min, max) {
 
 function setSnapshotState(text) {
   snapshotState.textContent = text;
+}
+
+function initScopeCanvas() {
+  if (!scopeCanvas || scopeCtx) return;
+  scopeCtx = scopeCanvas.getContext("2d");
+}
+
+function drawScopeFrame() {
+  if (!scopeCtx || !scopeCanvas) return;
+  const w = scopeCanvas.width;
+  const h = scopeCanvas.height;
+
+  scopeCtx.fillStyle = "#000000";
+  scopeCtx.fillRect(0, 0, w, h);
+
+  scopeCtx.strokeStyle = "rgba(184, 194, 204, 0.25)";
+  scopeCtx.beginPath();
+  scopeCtx.moveTo(0, h / 2);
+  scopeCtx.lineTo(w, h / 2);
+  scopeCtx.stroke();
+
+  if (audioEngine && audioEngine.scopeAnalyser) {
+    if (!scopeData || scopeData.length !== audioEngine.scopeAnalyser.fftSize) {
+      scopeData = new Uint8Array(audioEngine.scopeAnalyser.fftSize);
+    }
+    audioEngine.scopeAnalyser.getByteTimeDomainData(scopeData);
+    scopeCtx.strokeStyle = "#00e5ff";
+    scopeCtx.lineWidth = 1.5;
+    scopeCtx.beginPath();
+    for (let i = 0; i < scopeData.length; i += 1) {
+      const x = (i / (scopeData.length - 1)) * w;
+      const y = (scopeData[i] / 255) * h;
+      if (i === 0) scopeCtx.moveTo(x, y);
+      else scopeCtx.lineTo(x, y);
+    }
+    scopeCtx.stroke();
+  }
+
+  requestAnimationFrame(drawScopeFrame);
+}
+
+function startScopeLoop() {
+  if (scopeLoopStarted) return;
+  initScopeCanvas();
+  if (!scopeCtx) return;
+  scopeLoopStarted = true;
+  requestAnimationFrame(drawScopeFrame);
 }
 
 function isPlainObject(value) {
@@ -352,6 +403,7 @@ function initAudio() {
   const wetGain = ctx.createGain();
   const delayNode = ctx.createDelay(1.2);
   const feedbackGain = ctx.createGain();
+  const scopeAnalyser = ctx.createAnalyser();
   const oscA = ctx.createOscillator();
   const oscB = ctx.createOscillator();
 
@@ -364,6 +416,8 @@ function initAudio() {
   wetGain.gain.value = 0.18;
   delayNode.delayTime.value = 0.14;
   feedbackGain.gain.value = 0.24;
+  scopeAnalyser.fftSize = 1024;
+  scopeAnalyser.smoothingTimeConstant = 0.82;
   filter.type = "bandpass";
   filter.frequency.value = 220;
   filter.Q.value = 6;
@@ -385,6 +439,7 @@ function initAudio() {
   wetGain.connect(master);
   delayNode.connect(feedbackGain);
   feedbackGain.connect(delayNode);
+  master.connect(scopeAnalyser);
   master.connect(ctx.destination);
 
   oscA.start();
@@ -401,10 +456,12 @@ function initAudio() {
     wetGain,
     delayNode,
     feedbackGain,
+    scopeAnalyser,
     oscA,
     oscB,
   };
   ui.audioState.textContent = "LIVE";
+  startScopeLoop();
 }
 
 async function armMicInput() {
@@ -643,4 +700,5 @@ function frame() {
 buildGrid();
 restoreSnapshots();
 bindSnapshotActions();
+startScopeLoop();
 setInterval(frame, 120);

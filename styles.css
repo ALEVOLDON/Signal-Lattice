@@ -209,6 +209,14 @@ select:focus {
   padding: 8px;
 }
 
+.scope-canvas {
+  width: 100%;
+  height: 150px;
+  border: 1px solid var(--fg);
+  display: block;
+  background: #000;
+}
+
 .telemetry {
   border-top: 1px solid var(--fg);
   border-bottom: 0;
