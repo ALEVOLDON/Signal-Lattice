@@ -73,6 +73,28 @@ h2 {
   padding: 4px 0;
 }
 
+.mic-meter {
+  position: relative;
+  height: 10px;
+  border: 1px solid var(--fg);
+  margin-top: 4px;
+}
+
+.mic-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--sig);
+}
+
+.mic-peak {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  left: 0%;
+  background: var(--fg);
+}
+
 .value,
 .readouts span,
 .telemetry span,

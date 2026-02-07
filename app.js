@@ -14,6 +14,9 @@ const ui = {
   noise: document.getElementById("noise"),
   extin: document.getElementById("extin"),
   micState: document.getElementById("micState"),
+  micLevel: document.getElementById("micLevel"),
+  micFill: document.getElementById("micFill"),
+  micPeak: document.getElementById("micPeak"),
   fault: document.getElementById("fault"),
   faultActual: document.getElementById("faultActual"),
   clock: document.getElementById("clock"),
@@ -57,6 +60,7 @@ let prevOut = 0;
 let audioEngine = null;
 let micInput = null;
 let lastDriveValue = -1;
+let micPeakHold = 0;
 const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
@@ -477,6 +481,7 @@ function frame() {
   const extSynthetic = seedNoise(seed * 0.31 + tick * 0.03);
   const extMic = sampleMicLevel();
   const extIn = extSource === "MIC" ? extMic : extSynthetic;
+  micPeakHold = Math.max(extMic, micPeakHold * 0.94);
   const drift = (seedNoise(seed * 0.77 + tick * 0.02) - 0.5) * (0.14 + faultIntensity * 0.46);
   const thresholdUsed = clamp(threshold + (faultProfile === "21" ? drift : 0), 0, 1);
   const burstGate = 0.97 - faultIntensity * 0.08;
@@ -552,6 +557,9 @@ function frame() {
   ui.impulse.textContent = impulse.toFixed(2);
   ui.noise.textContent = noise.toFixed(2);
   ui.extin.textContent = extIn.toFixed(2);
+  ui.micLevel.textContent = extMic.toFixed(2);
+  ui.micFill.style.width = `${(extMic * 100).toFixed(1)}%`;
+  ui.micPeak.style.left = `${(micPeakHold * 100).toFixed(1)}%`;
   ui.modeLabel.textContent = mode;
   ui.faultActual.textContent = faultProfile;
 
