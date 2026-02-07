@@ -149,3 +149,7 @@
 - Added `ARM MIC` flow via `getUserMedia` and live mic level sampling.
 - `EXT-IN` can now be driven by live microphone signal.
 - Snapshot now stores/restores selected external source mode.
+- Added post-filter signal chain controls: `DRIVE`, `SPACE MIX`, `SPACE FEEDBACK`.
+- Added waveshaper stage for harmonic color.
+- Added delay-feedback space bus with dry/wet routing.
+- Snapshot now stores/restores drive and space parameters.

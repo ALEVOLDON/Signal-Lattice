@@ -30,6 +30,9 @@ const controls = {
   threshold: document.getElementById("threshold"),
   limiter: document.getElementById("limiter"),
   routeWeight: document.getElementById("routeWeight"),
+  drive: document.getElementById("drive"),
+  spaceMix: document.getElementById("spaceMix"),
+  spaceFeedback: document.getElementById("spaceFeedback"),
   lockRegister: document.getElementById("lockRegister"),
   faultProfile: document.getElementById("faultProfile"),
   faultIntensity: document.getElementById("faultIntensity"),
@@ -53,6 +56,7 @@ let tick = 0;
 let prevOut = 0;
 let audioEngine = null;
 let micInput = null;
+let lastDriveValue = -1;
 const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
@@ -103,6 +107,17 @@ function isValidSnapshotPayload(payload) {
   if (!isPlainObject(payload.controls)) return false;
   if (!Array.isArray(payload.matrix) || payload.matrix.length !== cells.length) return false;
   return true;
+}
+
+function makeDriveCurve(amount) {
+  const k = clamp(amount, 0, 800);
+  const n = 1024;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const x = (i * 2) / n - 1;
+    curve[i] = ((3 + k) * x * 20 * (Math.PI / 180)) / (Math.PI + k * Math.abs(x));
+  }
+  return curve;
 }
 
 function sampleMicLevel() {
@@ -156,6 +171,9 @@ function createSnapshot() {
       threshold: Number(controls.threshold.value),
       limiter: Number(controls.limiter.value),
       routeWeight: Number(controls.routeWeight.value),
+      drive: Number(controls.drive.value),
+      spaceMix: Number(controls.spaceMix.value),
+      spaceFeedback: Number(controls.spaceFeedback.value),
       faultProfile: controls.faultProfile.value,
       faultIntensity: Number(controls.faultIntensity.value),
       faultAuto: controls.faultAuto.checked,
@@ -176,6 +194,9 @@ function applySnapshot(snapshot) {
   controls.threshold.value = String(clamp(Number(state.threshold) || 0.35, 0, 1));
   controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
   controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
+  controls.drive.value = String(clamp(Number(state.drive) || 28, 0, 100));
+  controls.spaceMix.value = String(clamp(Number(state.spaceMix) || 18, 0, 100));
+  controls.spaceFeedback.value = String(clamp(Number(state.spaceFeedback) || 24, 0, 95));
   controls.faultProfile.value = ["00", "11", "21", "31"].includes(state.faultProfile) ? state.faultProfile : "00";
   controls.faultIntensity.value = String(clamp(Number(state.faultIntensity) || 55, 0, 100));
   controls.faultAuto.checked = Boolean(state.faultAuto);
@@ -321,11 +342,24 @@ function initAudio() {
   const master = ctx.createGain();
   const inputBus = ctx.createGain();
   const filter = ctx.createBiquadFilter();
+  const driveGain = ctx.createGain();
+  const shaper = ctx.createWaveShaper();
+  const dryGain = ctx.createGain();
+  const wetGain = ctx.createGain();
+  const delayNode = ctx.createDelay(1.2);
+  const feedbackGain = ctx.createGain();
   const oscA = ctx.createOscillator();
   const oscB = ctx.createOscillator();
 
   master.gain.value = 0.0001;
   inputBus.gain.value = 1;
+  driveGain.gain.value = 1;
+  shaper.curve = makeDriveCurve(120);
+  shaper.oversample = "4x";
+  dryGain.gain.value = 0.82;
+  wetGain.gain.value = 0.18;
+  delayNode.delayTime.value = 0.14;
+  feedbackGain.gain.value = 0.24;
   filter.type = "bandpass";
   filter.frequency.value = 220;
   filter.Q.value = 6;
@@ -338,13 +372,34 @@ function initAudio() {
   oscA.connect(inputBus);
   oscB.connect(inputBus);
   inputBus.connect(filter);
-  filter.connect(master);
+  filter.connect(driveGain);
+  driveGain.connect(shaper);
+  shaper.connect(dryGain);
+  dryGain.connect(master);
+  shaper.connect(delayNode);
+  delayNode.connect(wetGain);
+  wetGain.connect(master);
+  delayNode.connect(feedbackGain);
+  feedbackGain.connect(delayNode);
   master.connect(ctx.destination);
 
   oscA.start();
   oscB.start();
 
-  audioEngine = { ctx, master, inputBus, filter, oscA, oscB };
+  audioEngine = {
+    ctx,
+    master,
+    inputBus,
+    filter,
+    driveGain,
+    shaper,
+    dryGain,
+    wetGain,
+    delayNode,
+    feedbackGain,
+    oscA,
+    oscB,
+  };
   ui.audioState.textContent = "LIVE";
 }
 
@@ -407,6 +462,9 @@ function frame() {
   const threshold = clamp(Number(controls.threshold.value) || 0.35, 0, 1);
   const limiter = clamp(Number(controls.limiter.value) || 0.8, 0, 1);
   const routeWeight = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
+  const drive = clamp(Number(controls.drive.value) || 28, 0, 100) / 100;
+  const spaceMix = clamp(Number(controls.spaceMix.value) || 18, 0, 100) / 100;
+  const spaceFeedback = clamp(Number(controls.spaceFeedback.value) || 24, 0, 95) / 100;
   const seed = Number(controls.mutationSeed.value) || 0;
   const extSource = controls.extSource.value || "SYN";
   const selectedFaultProfile = controls.faultProfile.value || "00";
@@ -545,6 +603,25 @@ function frame() {
     audioEngine.master.gain.setTargetAtTime(gainTarget, t, 0.05);
     audioEngine.filter.frequency.setTargetAtTime(cutoff, t, 0.05);
     audioEngine.filter.Q.setTargetAtTime(2 + density * 10, t, 0.07);
+    const driveAmount = 40 + drive * 620;
+    if (Math.abs(driveAmount - lastDriveValue) > 2) {
+      audioEngine.shaper.curve = makeDriveCurve(driveAmount);
+      lastDriveValue = driveAmount;
+    }
+    audioEngine.driveGain.gain.setTargetAtTime(0.8 + drive * 1.5, t, 0.05);
+    const wet = clamp(spaceMix + (faultProfile === "31" && burst === 1 ? 0.16 : 0), 0, 0.95);
+    audioEngine.wetGain.gain.setTargetAtTime(wet, t, 0.06);
+    audioEngine.dryGain.gain.setTargetAtTime(1 - wet, t, 0.06);
+    audioEngine.feedbackGain.gain.setTargetAtTime(
+      clamp(spaceFeedback + density * 0.18 - jitter * 0.1, 0, 0.93),
+      t,
+      0.06,
+    );
+    audioEngine.delayNode.delayTime.setTargetAtTime(
+      clamp(0.06 + density * 0.22 + jitter * 0.12, 0.04, 0.55),
+      t,
+      0.06,
+    );
     audioEngine.oscA.frequency.setTargetAtTime(baseFreq, t, 0.05);
     audioEngine.oscB.frequency.setTargetAtTime(modFreq, t, 0.05);
   }
