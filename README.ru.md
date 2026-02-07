@@ -108,7 +108,7 @@
 Запусти папку через `http://localhost` (стабильнее для доступа к устройствам):
 
 ```powershell
-cd c:\Users\alevo\Desktop\0702
+cd <папка-проекта>
 python -m http.server 8080
 ```
 

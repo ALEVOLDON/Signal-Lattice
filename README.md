@@ -103,7 +103,7 @@ Open `index.html` in a modern browser.
 Serve the folder from `http://localhost` (recommended for stable device/media permissions):
 
 ```powershell
-cd c:\Users\alevo\Desktop\0702
+cd <project-folder>
 python -m http.server 8080
 ```
 
