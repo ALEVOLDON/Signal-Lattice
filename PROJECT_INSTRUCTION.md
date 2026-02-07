@@ -142,3 +142,6 @@
 - Added adaptive fault switching (`AUTO FAULT`) driven by telemetry pressure.
 - Added `FAULT ACTUAL` readout to show effective profile after auto-resolution.
 - Snapshot now stores/restores `faultIntensity` and `faultAuto`.
+- Snapshot import now validates schema version (`signal-lattice-snapshot-pack-v1`).
+- Added merge mode for import (`MERGE IMPORT`): preserve missing slots.
+- Added replace mode for import (disable `MERGE IMPORT`): clear slots before import.

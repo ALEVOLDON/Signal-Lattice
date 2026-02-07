@@ -39,6 +39,7 @@ const controls = {
   snapshotExport: document.getElementById("snapshotExport"),
   snapshotImport: document.getElementById("snapshotImport"),
   snapshotImportFile: document.getElementById("snapshotImportFile"),
+  snapshotMergeImport: document.getElementById("snapshotMergeImport"),
 };
 
 const cells = [];
@@ -51,6 +52,7 @@ let audioEngine = null;
 const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
+const snapshotSchema = "signal-lattice-snapshot-pack-v1";
 
 function seedNoise(seed) {
   let x = Math.sin(seed * 999) * 10000;
@@ -86,6 +88,17 @@ function clamp(value, min, max) {
 
 function setSnapshotState(text) {
   snapshotState.textContent = text;
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isValidSnapshotPayload(payload) {
+  if (!isPlainObject(payload)) return false;
+  if (!isPlainObject(payload.controls)) return false;
+  if (!Array.isArray(payload.matrix) || payload.matrix.length !== cells.length) return false;
+  return true;
 }
 
 function resolveFaultProfile(selectedProfile, autoEnabled, intensity) {
@@ -205,7 +218,7 @@ function bindSnapshotActions() {
   controls.snapshotExport.addEventListener("click", () => {
     try {
       const payload = {
-        schema: "signal-lattice-snapshot-pack-v1",
+        schema: snapshotSchema,
         exportedAt: new Date().toISOString(),
         slots: snapshotStore,
       };
@@ -236,6 +249,12 @@ function bindSnapshotActions() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
+      if (!parsed || parsed.schema !== snapshotSchema) {
+        setSnapshotState("SCHEMA FAIL");
+        input.value = "";
+        return;
+      }
+
       const slots = parsed && parsed.slots ? parsed.slots : null;
       if (!slots || typeof slots !== "object") {
         setSnapshotState("IMPORT FAIL");
@@ -243,11 +262,28 @@ function bindSnapshotActions() {
         return;
       }
 
+      const mergeMode = controls.snapshotMergeImport.checked;
+      if (!mergeMode) {
+        for (const slot of ["1", "2", "3"]) {
+          snapshotStore[slot] = null;
+        }
+      }
+
       for (const slot of ["1", "2", "3"]) {
-        snapshotStore[slot] = slots[slot] || null;
+        const incoming = slots[slot] || null;
+        if (!incoming) {
+          if (!mergeMode) snapshotStore[slot] = null;
+          continue;
+        }
+        if (!isValidSnapshotPayload(incoming)) {
+          setSnapshotState(`SLOT ${slot.padStart(2, "0")} FAIL`);
+          input.value = "";
+          return;
+        }
+        snapshotStore[slot] = incoming;
       }
       persistSnapshots();
-      setSnapshotState("IMPORT OK");
+      setSnapshotState(mergeMode ? "IMPORT MERGE" : "IMPORT REPLACE");
     } catch (_err) {
       setSnapshotState("IMPORT FAIL");
     } finally {
