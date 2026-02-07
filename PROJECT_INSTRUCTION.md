@@ -92,6 +92,7 @@
 - Параметры звука связаны с состоянием матрицы/телеметрии
 - Для режимов `A/B/C` добавлен разный тип фильтра и разный маппинг частот/динамики
 - Fault-профили влияют на аудио: фильтрацию, динамику и частотные отклонения
+- Добавлен дополнительный насыщенный слой на `Tone.js` (`RICH LAYER`, `RICH MIX`)
 - Статус аудио:
   - `ARM` (ожидает действие пользователя)
   - `LIVE` (движок активен)
@@ -153,3 +154,5 @@
 - Added waveshaper stage for harmonic color.
 - Added delay-feedback space bus with dry/wet routing.
 - Snapshot now stores/restores drive and space parameters.
+- Added optional `Tone.js` rich synthesis layer with `RICH LAYER` and `RICH MIX`.
+- Rich layer is mapped to impulse/routing states and saved inside snapshots.
