@@ -31,6 +31,14 @@
             <div id="micFill" class="mic-fill"></div>
             <div id="micPeak" class="mic-peak"></div>
           </div>
+          <div class="row"><span>CAM</span><span class="value" id="camState">OFF</span></div>
+          <div class="row"><span>CAM MOTION</span><span class="value" id="camMotion">0.00</span></div>
+          <div class="row"><span>CAM LIGHT</span><span class="value" id="camLight">0.00</span></div>
+          <div class="mic-meter" aria-label="Camera motion meter">
+            <div id="camFill" class="mic-fill"></div>
+            <div id="camPeak" class="mic-peak"></div>
+          </div>
+          <canvas id="camPreview" class="cam-preview" width="160" height="90" aria-label="Camera preview"></canvas>
         </div>
 
         <h2>REGISTERS</h2>
@@ -40,9 +48,17 @@
             <select id="extSource">
               <option value="SYN" selected>SYNTHETIC</option>
               <option value="MIC">MIC INPUT</option>
+              <option value="CAM">CAM MOTION</option>
             </select>
           </label>
-          <button id="micArm" class="action-unit" type="button">ARM MIC</button>
+          <div class="action-row dual">
+            <button id="micArm" class="action-unit" type="button">ARM MIC</button>
+            <button id="camArm" class="action-unit" type="button">ARM CAM</button>
+          </div>
+          <label class="toggle-row">
+            <span>CAM MOD</span>
+            <input id="camMod" type="checkbox" checked />
+          </label>
           <label class="control">
             <span>RATE DIVIDER</span>
             <input id="rateDivider" type="number" min="1" max="16" value="4" />

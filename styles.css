@@ -95,6 +95,15 @@ h2 {
   background: var(--fg);
 }
 
+.cam-preview {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--fg);
+  margin-top: 6px;
+  display: block;
+  background: #000;
+}
+
 .value,
 .readouts span,
 .telemetry span,

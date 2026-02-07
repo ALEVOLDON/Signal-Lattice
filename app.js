@@ -2,6 +2,7 @@
 const cols = 12;
 const field = document.getElementById("routingField");
 const scopeCanvas = document.getElementById("scopeCanvas");
+const camPreview = document.getElementById("camPreview");
 
 const ui = {
   inLevel: document.getElementById("inLevel"),
@@ -18,6 +19,11 @@ const ui = {
   micLevel: document.getElementById("micLevel"),
   micFill: document.getElementById("micFill"),
   micPeak: document.getElementById("micPeak"),
+  camState: document.getElementById("camState"),
+  camMotion: document.getElementById("camMotion"),
+  camLight: document.getElementById("camLight"),
+  camFill: document.getElementById("camFill"),
+  camPeak: document.getElementById("camPeak"),
   fault: document.getElementById("fault"),
   faultActual: document.getElementById("faultActual"),
   clock: document.getElementById("clock"),
@@ -31,6 +37,8 @@ const controls = {
   mutationSeed: document.getElementById("mutationSeed"),
   extSource: document.getElementById("extSource"),
   micArm: document.getElementById("micArm"),
+  camArm: document.getElementById("camArm"),
+  camMod: document.getElementById("camMod"),
   threshold: document.getElementById("threshold"),
   limiter: document.getElementById("limiter"),
   routeWeight: document.getElementById("routeWeight"),
@@ -63,8 +71,10 @@ let tick = 0;
 let prevOut = 0;
 let audioEngine = null;
 let micInput = null;
+let camInput = null;
 let lastDriveValue = -1;
 let micPeakHold = 0;
+let camPeakHold = 0;
 let toneEngine = null;
 let lastImpulse = 0;
 let scopeCtx = null;
@@ -215,6 +225,31 @@ function sampleMicLevel() {
   return clamp(rms * 3.2, 0, 1);
 }
 
+function sampleCameraSignal() {
+  if (!camInput || !camInput.ctx || !camInput.video || camInput.video.readyState < 2) {
+    return { motion: 0, light: 0, signal: 0 };
+  }
+
+  const { ctx, video, w, h, prev } = camInput;
+  ctx.drawImage(video, 0, 0, w, h);
+  const frame = ctx.getImageData(0, 0, w, h).data;
+  let lumaSum = 0;
+  let motionSum = 0;
+
+  for (let i = 0; i < w * h; i += 1) {
+    const p = i * 4;
+    const l = (frame[p] * 0.2126 + frame[p + 1] * 0.7152 + frame[p + 2] * 0.0722) / 255;
+    lumaSum += l;
+    motionSum += Math.abs(l - prev[i]);
+    prev[i] = l;
+  }
+
+  const light = clamp(lumaSum / (w * h), 0, 1);
+  const motion = clamp((motionSum / (w * h)) * 4.2, 0, 1);
+  const signal = clamp(motion * 0.75 + Math.abs(light - 0.5) * 0.5, 0, 1);
+  return { motion, light, signal };
+}
+
 function initToneEngine() {
   if (toneEngine || typeof window.Tone === "undefined") return;
   const synth = new Tone.PolySynth(Tone.Synth, {
@@ -228,6 +263,45 @@ function initToneEngine() {
   const gain = new Tone.Gain(0);
   synth.chain(drive, filter, chorus, reverb, gain, Tone.Destination);
   toneEngine = { synth, drive, filter, chorus, reverb, gain };
+}
+
+async function armCameraInput() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    ui.camState.textContent = "N/A";
+    return;
+  }
+
+  try {
+    if (camInput && camInput.stream) {
+      ui.camState.textContent = "LIVE";
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 180, facingMode: "user" },
+      audio: false,
+    });
+
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    await video.play();
+
+    const processCanvas = document.createElement("canvas");
+    const w = 64;
+    const h = 36;
+    processCanvas.width = w;
+    processCanvas.height = h;
+    const ctx = processCanvas.getContext("2d", { willReadFrequently: true });
+    const prev = new Float32Array(w * h);
+
+    camInput = { stream, video, processCanvas, ctx, w, h, prev };
+    ui.camState.textContent = "LIVE";
+  } catch (_err) {
+    ui.camState.textContent = "DENY";
+  }
 }
 
 function resolveFaultProfile(selectedProfile, autoEnabled, intensity) {
@@ -264,6 +338,7 @@ function createSnapshot() {
       phaseOffset: Number(controls.phaseOffset.value),
       mutationSeed: Number(controls.mutationSeed.value),
       extSource: controls.extSource.value,
+      camMod: controls.camMod.checked,
       threshold: Number(controls.threshold.value),
       limiter: Number(controls.limiter.value),
       routeWeight: Number(controls.routeWeight.value),
@@ -288,7 +363,8 @@ function applySnapshot(snapshot) {
   controls.rateDivider.value = String(clamp(Number(state.rateDivider) || 1, 1, 16));
   controls.phaseOffset.value = String(clamp(Number(state.phaseOffset) || 0, 0, 31));
   controls.mutationSeed.value = String(clamp(Number(state.mutationSeed) || 0, 0, 999));
-  controls.extSource.value = state.extSource === "MIC" ? "MIC" : "SYN";
+  controls.extSource.value = ["SYN", "MIC", "CAM"].includes(state.extSource) ? state.extSource : "SYN";
+  controls.camMod.checked = state.camMod !== false;
   controls.threshold.value = String(clamp(Number(state.threshold) || 0.35, 0, 1));
   controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
   controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
@@ -565,6 +641,7 @@ function armAudioOnce() {
 document.addEventListener("pointerdown", armAudioOnce, { once: true });
 document.addEventListener("keydown", armAudioOnce, { once: true });
 controls.micArm.addEventListener("click", armMicInput);
+controls.camArm.addEventListener("click", armCameraInput);
 
 function frame() {
   tick += 1;
@@ -573,7 +650,7 @@ function frame() {
   const phaseOffset = clamp(Number(controls.phaseOffset.value) || 0, 0, 31);
   const threshold = clamp(Number(controls.threshold.value) || 0.35, 0, 1);
   const limiter = clamp(Number(controls.limiter.value) || 0.8, 0, 1);
-  const routeWeight = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
+  const routeWeightBase = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
   const richMix = clamp(Number(controls.richMix.value) || 35, 0, 100) / 100;
   const richLayer = controls.richLayer.checked;
   const drive = clamp(Number(controls.drive.value) || 28, 0, 100) / 100;
@@ -582,7 +659,19 @@ function frame() {
   const seed = Number(controls.mutationSeed.value) || 0;
   const extSource = controls.extSource.value || "SYN";
   const selectedFaultProfile = controls.faultProfile.value || "00";
-  const faultIntensity = clamp(Number(controls.faultIntensity.value) || 55, 0, 100) / 100;
+  let faultIntensity = clamp(Number(controls.faultIntensity.value) || 55, 0, 100) / 100;
+  const cam = sampleCameraSignal();
+  const camMotion = cam.motion;
+  const camLight = cam.light;
+  const extCam = cam.signal;
+  const camModEnabled = controls.camMod.checked;
+  let routeWeight = routeWeightBase;
+  let thresholdBase = threshold;
+  if (camModEnabled) {
+    routeWeight = clamp(routeWeightBase * (0.82 + camMotion * 0.55), 0, 1);
+    thresholdBase = clamp(threshold - camMotion * 0.22 + (camLight - 0.5) * 0.08, 0, 1);
+    faultIntensity = clamp(faultIntensity + camMotion * 0.22, 0, 1);
+  }
   const faultProfile = resolveFaultProfile(selectedFaultProfile, controls.faultAuto.checked, faultIntensity);
   const mode = controls.routingMode.value || "A";
 
@@ -590,10 +679,11 @@ function frame() {
   const noise = seedNoise(seed + tick * 0.07);
   const extSynthetic = seedNoise(seed * 0.31 + tick * 0.03);
   const extMic = sampleMicLevel();
-  const extIn = extSource === "MIC" ? extMic : extSynthetic;
+  const extIn = extSource === "MIC" ? extMic : extSource === "CAM" ? extCam : extSynthetic;
   micPeakHold = Math.max(extMic, micPeakHold * 0.94);
+  camPeakHold = Math.max(camMotion, camPeakHold * 0.94);
   const drift = (seedNoise(seed * 0.77 + tick * 0.02) - 0.5) * (0.14 + faultIntensity * 0.46);
-  const thresholdUsed = clamp(threshold + (faultProfile === "21" ? drift : 0), 0, 1);
+  const thresholdUsed = clamp(thresholdBase + (faultProfile === "21" ? drift : 0), 0, 1);
   const burstGate = 0.97 - faultIntensity * 0.08;
   const burst = faultProfile === "31" && seedNoise(seed + tick * 0.19) > burstGate ? 1 : 0;
 
@@ -670,6 +760,19 @@ function frame() {
   ui.micLevel.textContent = extMic.toFixed(2);
   ui.micFill.style.width = `${(extMic * 100).toFixed(1)}%`;
   ui.micPeak.style.left = `${(micPeakHold * 100).toFixed(1)}%`;
+  ui.camMotion.textContent = camMotion.toFixed(2);
+  ui.camLight.textContent = camLight.toFixed(2);
+  ui.camFill.style.width = `${(camMotion * 100).toFixed(1)}%`;
+  ui.camPeak.style.left = `${(camPeakHold * 100).toFixed(1)}%`;
+  if (camPreview && camInput && camInput.video && camInput.video.readyState >= 2) {
+    const pv = camPreview.getContext("2d");
+    if (pv) {
+      pv.save();
+      pv.scale(-1, 1);
+      pv.drawImage(camInput.video, -camPreview.width, 0, camPreview.width, camPreview.height);
+      pv.restore();
+    }
+  }
   ui.modeLabel.textContent = mode;
   ui.faultActual.textContent = faultProfile;
 
