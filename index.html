@@ -122,6 +122,14 @@
 
         <h2>SIGNAL CHAIN</h2>
         <div class="cluster control-grid">
+          <label class="toggle-row">
+            <span>RICH LAYER</span>
+            <input id="richLayer" type="checkbox" />
+          </label>
+          <label class="control">
+            <span>RICH MIX</span>
+            <input id="richMix" type="number" min="0" max="100" value="35" />
+          </label>
           <label class="control">
             <span>DRIVE</span>
             <input id="drive" type="number" min="0" max="100" value="28" />
@@ -179,6 +187,7 @@
     </footer>
   </div>
 
+  <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

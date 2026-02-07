@@ -34,6 +34,8 @@ const controls = {
   threshold: document.getElementById("threshold"),
   limiter: document.getElementById("limiter"),
   routeWeight: document.getElementById("routeWeight"),
+  richLayer: document.getElementById("richLayer"),
+  richMix: document.getElementById("richMix"),
   drive: document.getElementById("drive"),
   spaceMix: document.getElementById("spaceMix"),
   spaceFeedback: document.getElementById("spaceFeedback"),
@@ -63,6 +65,8 @@ let audioEngine = null;
 let micInput = null;
 let lastDriveValue = -1;
 let micPeakHold = 0;
+let toneEngine = null;
+let lastImpulse = 0;
 let scopeCtx = null;
 let scopeLoopStarted = false;
 let scopeData = null;
@@ -211,6 +215,21 @@ function sampleMicLevel() {
   return clamp(rms * 3.2, 0, 1);
 }
 
+function initToneEngine() {
+  if (toneEngine || typeof window.Tone === "undefined") return;
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "sawtooth" },
+    envelope: { attack: 0.01, decay: 0.18, sustain: 0.22, release: 0.35 },
+  });
+  const drive = new Tone.Distortion(0.2);
+  const filter = new Tone.Filter(1100, "lowpass");
+  const chorus = new Tone.Chorus(3.5, 2.2, 0.35).start();
+  const reverb = new Tone.Reverb({ decay: 2.3, wet: 0.2 });
+  const gain = new Tone.Gain(0);
+  synth.chain(drive, filter, chorus, reverb, gain, Tone.Destination);
+  toneEngine = { synth, drive, filter, chorus, reverb, gain };
+}
+
 function resolveFaultProfile(selectedProfile, autoEnabled, intensity) {
   if (!autoEnabled) return selectedProfile;
 
@@ -248,6 +267,8 @@ function createSnapshot() {
       threshold: Number(controls.threshold.value),
       limiter: Number(controls.limiter.value),
       routeWeight: Number(controls.routeWeight.value),
+      richLayer: controls.richLayer.checked,
+      richMix: Number(controls.richMix.value),
       drive: Number(controls.drive.value),
       spaceMix: Number(controls.spaceMix.value),
       spaceFeedback: Number(controls.spaceFeedback.value),
@@ -271,6 +292,8 @@ function applySnapshot(snapshot) {
   controls.threshold.value = String(clamp(Number(state.threshold) || 0.35, 0, 1));
   controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
   controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
+  controls.richLayer.checked = Boolean(state.richLayer);
+  controls.richMix.value = String(clamp(Number(state.richMix) || 35, 0, 100));
   controls.drive.value = String(clamp(Number(state.drive) || 28, 0, 100));
   controls.spaceMix.value = String(clamp(Number(state.spaceMix) || 18, 0, 100));
   controls.spaceFeedback.value = String(clamp(Number(state.spaceFeedback) || 24, 0, 95));
@@ -494,6 +517,8 @@ async function armMicInput() {
 
   try {
     initAudio();
+    initToneEngine();
+    if (toneEngine && Tone.context.state !== "running") await Tone.start();
     if (audioEngine && audioEngine.ctx.state === "suspended") {
       await audioEngine.ctx.resume();
     }
@@ -528,6 +553,10 @@ function armAudioOnce() {
   }
 
   initAudio();
+  initToneEngine();
+  if (toneEngine && Tone.context.state !== "running") {
+    Tone.start();
+  }
   if (audioEngine && audioEngine.ctx.state === "suspended") {
     audioEngine.ctx.resume();
   }
@@ -545,6 +574,8 @@ function frame() {
   const threshold = clamp(Number(controls.threshold.value) || 0.35, 0, 1);
   const limiter = clamp(Number(controls.limiter.value) || 0.8, 0, 1);
   const routeWeight = clamp(Number(controls.routeWeight.value) || 160, 0, 255) / 255;
+  const richMix = clamp(Number(controls.richMix.value) || 35, 0, 100) / 100;
+  const richLayer = controls.richLayer.checked;
   const drive = clamp(Number(controls.drive.value) || 28, 0, 100) / 100;
   const spaceMix = clamp(Number(controls.spaceMix.value) || 18, 0, 100) / 100;
   const spaceFeedback = clamp(Number(controls.spaceFeedback.value) || 24, 0, 95) / 100;
@@ -712,6 +743,30 @@ function frame() {
     audioEngine.oscA.frequency.setTargetAtTime(baseFreq, t, 0.05);
     audioEngine.oscB.frequency.setTargetAtTime(modFreq, t, 0.05);
   }
+
+  if (toneEngine) {
+    const controlBaseFreq = 40 + routeWeight * 180 + phaseOffset * 2;
+    toneEngine.gain.gain.rampTo(richLayer ? (0.015 + richMix * 0.19) : 0, 0.08);
+    toneEngine.filter.frequency.rampTo(220 + density * 2600 + drive * 700, 0.08);
+    toneEngine.drive.distortion = clamp(0.12 + drive * 0.75 + faultIntensity * 0.2, 0, 1);
+    toneEngine.reverb.wet.rampTo(clamp(0.15 + richMix * 0.45, 0, 0.9), 0.1);
+    toneEngine.chorus.wet.rampTo(clamp(0.1 + jitter * 2.2, 0, 0.7), 0.1);
+
+    if (richLayer && impulse > 0 && lastImpulse === 0) {
+      const note = Tone.Frequency(controlBaseFreq, "hz").toNote();
+      const velocity = clamp(0.15 + outLevel * 1.35, 0.08, 1);
+      if (mode === "B") {
+        const note2 = Tone.Frequency(controlBaseFreq * 1.5, "hz").toNote();
+        toneEngine.synth.triggerAttackRelease([note, note2], "16n", undefined, velocity);
+      } else if (mode === "C") {
+        const note3 = Tone.Frequency(controlBaseFreq * 0.5, "hz").toNote();
+        toneEngine.synth.triggerAttackRelease([note, note3], "8n", undefined, velocity);
+      } else {
+        toneEngine.synth.triggerAttackRelease(note, "16n", undefined, velocity);
+      }
+    }
+  }
+  lastImpulse = impulse;
 
   telemetryMemory.density = density;
   telemetryMemory.jitter = jitter;
