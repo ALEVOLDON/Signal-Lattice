@@ -42,6 +42,7 @@ const controls = {
   faultIntensity: document.getElementById("faultIntensity"),
   faultAuto: document.getElementById("faultAuto"),
   routingMode: document.getElementById("routingMode"),
+  scopeMode: document.getElementById("scopeMode"),
   snapshotSlot: document.getElementById("snapshotSlot"),
   snapshotWrite: document.getElementById("snapshotWrite"),
   snapshotRecall: document.getElementById("snapshotRecall"),
@@ -65,6 +66,7 @@ let micPeakHold = 0;
 let scopeCtx = null;
 let scopeLoopStarted = false;
 let scopeData = null;
+let scopeFreqData = null;
 const telemetryMemory = { density: 0, jitter: 0, inLevel: 0, overloaded: false };
 const snapshotStore = { "1": null, "2": null, "3": null };
 const snapshotStorageKey = "signal-lattice-snapshots-v1";
@@ -126,20 +128,40 @@ function drawScopeFrame() {
   scopeCtx.stroke();
 
   if (audioEngine && audioEngine.scopeAnalyser) {
-    if (!scopeData || scopeData.length !== audioEngine.scopeAnalyser.fftSize) {
-      scopeData = new Uint8Array(audioEngine.scopeAnalyser.fftSize);
+    const mode = controls.scopeMode.value || "WAVE";
+    if (mode === "SPECTRUM") {
+      const bins = audioEngine.scopeAnalyser.frequencyBinCount;
+      if (!scopeFreqData || scopeFreqData.length !== bins) {
+        scopeFreqData = new Uint8Array(bins);
+      }
+      audioEngine.scopeAnalyser.getByteFrequencyData(scopeFreqData);
+      const barCount = 64;
+      const barWidth = w / barCount;
+      for (let i = 0; i < barCount; i += 1) {
+        const idx = Math.floor((i / barCount) * bins);
+        const mag = scopeFreqData[idx] / 255;
+        const bh = Math.max(1, mag * (h - 6));
+        const x = i * barWidth;
+        const y = h - bh;
+        scopeCtx.fillStyle = i % 2 === 0 ? "#00e5ff" : "rgba(0,229,255,0.7)";
+        scopeCtx.fillRect(x, y, barWidth - 1, bh);
+      }
+    } else {
+      if (!scopeData || scopeData.length !== audioEngine.scopeAnalyser.fftSize) {
+        scopeData = new Uint8Array(audioEngine.scopeAnalyser.fftSize);
+      }
+      audioEngine.scopeAnalyser.getByteTimeDomainData(scopeData);
+      scopeCtx.strokeStyle = "#00e5ff";
+      scopeCtx.lineWidth = 1.5;
+      scopeCtx.beginPath();
+      for (let i = 0; i < scopeData.length; i += 1) {
+        const x = (i / (scopeData.length - 1)) * w;
+        const y = (scopeData[i] / 255) * h;
+        if (i === 0) scopeCtx.moveTo(x, y);
+        else scopeCtx.lineTo(x, y);
+      }
+      scopeCtx.stroke();
     }
-    audioEngine.scopeAnalyser.getByteTimeDomainData(scopeData);
-    scopeCtx.strokeStyle = "#00e5ff";
-    scopeCtx.lineWidth = 1.5;
-    scopeCtx.beginPath();
-    for (let i = 0; i < scopeData.length; i += 1) {
-      const x = (i / (scopeData.length - 1)) * w;
-      const y = (scopeData[i] / 255) * h;
-      if (i === 0) scopeCtx.moveTo(x, y);
-      else scopeCtx.lineTo(x, y);
-    }
-    scopeCtx.stroke();
   }
 
   requestAnimationFrame(drawScopeFrame);

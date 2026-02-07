@@ -67,6 +67,13 @@
           <div>LOSS: <span id="lossLevel">0.00</span></div>
         </div>
         <h2>SCOPE</h2>
+        <label class="control scope-mode">
+          <span>VIEW</span>
+          <select id="scopeMode">
+            <option value="WAVE" selected>WAVE</option>
+            <option value="SPECTRUM">SPECTRUM</option>
+          </select>
+        </label>
         <canvas id="scopeCanvas" class="scope-canvas" width="900" height="150" aria-label="Signal scope"></canvas>
       </main>
 
