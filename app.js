@@ -250,6 +250,38 @@ function sampleCameraSignal() {
   return { motion, light, signal };
 }
 
+function renderCameraPreviewStylized() {
+  if (!camPreview || !camInput || !camInput.video || camInput.video.readyState < 2) return;
+  const pv = camPreview.getContext("2d");
+  if (!pv) return;
+
+  pv.save();
+  pv.scale(-1, 1);
+  pv.drawImage(camInput.video, -camPreview.width, 0, camPreview.width, camPreview.height);
+  pv.restore();
+
+  const img = pv.getImageData(0, 0, camPreview.width, camPreview.height);
+  const data = img.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const luma = (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
+    // Three-tone quantization into project palette: black / gray / cyan
+    if (luma < 0.22) {
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+    } else if (luma < 0.58) {
+      data[i] = 184;
+      data[i + 1] = 194;
+      data[i + 2] = 204;
+    } else {
+      data[i] = 0;
+      data[i + 1] = 229;
+      data[i + 2] = 255;
+    }
+  }
+  pv.putImageData(img, 0, 0);
+}
+
 function initToneEngine() {
   if (toneEngine || typeof window.Tone === "undefined") return;
   const synth = new Tone.PolySynth(Tone.Synth, {
@@ -764,15 +796,7 @@ function frame() {
   ui.camLight.textContent = camLight.toFixed(2);
   ui.camFill.style.width = `${(camMotion * 100).toFixed(1)}%`;
   ui.camPeak.style.left = `${(camPeakHold * 100).toFixed(1)}%`;
-  if (camPreview && camInput && camInput.video && camInput.video.readyState >= 2) {
-    const pv = camPreview.getContext("2d");
-    if (pv) {
-      pv.save();
-      pv.scale(-1, 1);
-      pv.drawImage(camInput.video, -camPreview.width, 0, camPreview.width, camPreview.height);
-      pv.restore();
-    }
-  }
+  renderCameraPreviewStylized();
   ui.modeLabel.textContent = mode;
   ui.faultActual.textContent = faultProfile;
 
