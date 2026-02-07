@@ -84,6 +84,24 @@
           <span>HOLD</span>
           <input id="lockRegister" type="checkbox" />
         </label>
+
+        <h2>STATE SNAPSHOT</h2>
+        <div class="cluster control-grid">
+          <label class="control">
+            <span>SLOT</span>
+            <select id="snapshotSlot">
+              <option value="1" selected>01</option>
+              <option value="2">02</option>
+              <option value="3">03</option>
+            </select>
+          </label>
+          <div class="action-row">
+            <button id="snapshotWrite" class="action-unit" type="button">WRITE</button>
+            <button id="snapshotRecall" class="action-unit" type="button">RECALL</button>
+            <button id="snapshotPurge" class="action-unit" type="button">PURGE</button>
+          </div>
+          <div class="row"><span>STATE</span><span class="value" id="snapshotState">IDLE</span></div>
+        </div>
       </aside>
     </section>
 

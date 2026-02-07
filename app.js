@@ -28,14 +28,21 @@ const controls = {
   routeWeight: document.getElementById("routeWeight"),
   lockRegister: document.getElementById("lockRegister"),
   routingMode: document.getElementById("routingMode"),
+  snapshotSlot: document.getElementById("snapshotSlot"),
+  snapshotWrite: document.getElementById("snapshotWrite"),
+  snapshotRecall: document.getElementById("snapshotRecall"),
+  snapshotPurge: document.getElementById("snapshotPurge"),
 };
 
 const cells = [];
+const snapshotState = document.getElementById("snapshotState");
 let clipMs = 0;
 let peak = 0;
 let tick = 0;
 let prevOut = 0;
 let audioEngine = null;
+const snapshotStore = { "1": null, "2": null, "3": null };
+const snapshotStorageKey = "signal-lattice-snapshots-v1";
 
 function seedNoise(seed) {
   let x = Math.sin(seed * 999) * 10000;
@@ -67,6 +74,104 @@ function buildGrid() {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function setSnapshotState(text) {
+  snapshotState.textContent = text;
+}
+
+function getActiveMap() {
+  return cells.map((cell) => (cell.dataset.active === "1" ? 1 : 0));
+}
+
+function applyActiveMap(map) {
+  for (let i = 0; i < cells.length; i += 1) {
+    const value = map[i] ? "1" : "0";
+    cells[i].dataset.active = value;
+    cells[i].textContent = value === "1" ? "01" : "00";
+  }
+}
+
+function createSnapshot() {
+  return {
+    controls: {
+      rateDivider: Number(controls.rateDivider.value),
+      phaseOffset: Number(controls.phaseOffset.value),
+      mutationSeed: Number(controls.mutationSeed.value),
+      threshold: Number(controls.threshold.value),
+      limiter: Number(controls.limiter.value),
+      routeWeight: Number(controls.routeWeight.value),
+      routingMode: controls.routingMode.value,
+      lockRegister: controls.lockRegister.checked,
+    },
+    matrix: getActiveMap(),
+  };
+}
+
+function applySnapshot(snapshot) {
+  if (!snapshot) return;
+  const state = snapshot.controls || {};
+  controls.rateDivider.value = String(clamp(Number(state.rateDivider) || 1, 1, 16));
+  controls.phaseOffset.value = String(clamp(Number(state.phaseOffset) || 0, 0, 31));
+  controls.mutationSeed.value = String(clamp(Number(state.mutationSeed) || 0, 0, 999));
+  controls.threshold.value = String(clamp(Number(state.threshold) || 0.35, 0, 1));
+  controls.limiter.value = String(clamp(Number(state.limiter) || 0.8, 0, 1));
+  controls.routeWeight.value = String(clamp(Number(state.routeWeight) || 160, 0, 255));
+  controls.routingMode.value = ["A", "B", "C"].includes(state.routingMode) ? state.routingMode : "A";
+  controls.lockRegister.checked = Boolean(state.lockRegister);
+  if (Array.isArray(snapshot.matrix) && snapshot.matrix.length === cells.length) {
+    applyActiveMap(snapshot.matrix);
+  }
+}
+
+function persistSnapshots() {
+  try {
+    localStorage.setItem(snapshotStorageKey, JSON.stringify(snapshotStore));
+  } catch (_err) {
+    setSnapshotState("STORAGE FAIL");
+  }
+}
+
+function restoreSnapshots() {
+  try {
+    const raw = localStorage.getItem(snapshotStorageKey);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    for (const slot of ["1", "2", "3"]) {
+      if (parsed && parsed[slot]) {
+        snapshotStore[slot] = parsed[slot];
+      }
+    }
+  } catch (_err) {
+    setSnapshotState("RESTORE FAIL");
+  }
+}
+
+function bindSnapshotActions() {
+  controls.snapshotWrite.addEventListener("click", () => {
+    const slot = controls.snapshotSlot.value || "1";
+    snapshotStore[slot] = createSnapshot();
+    persistSnapshots();
+    setSnapshotState(`WROTE ${slot.padStart(2, "0")}`);
+  });
+
+  controls.snapshotRecall.addEventListener("click", () => {
+    const slot = controls.snapshotSlot.value || "1";
+    const snapshot = snapshotStore[slot];
+    if (!snapshot) {
+      setSnapshotState(`EMPTY ${slot.padStart(2, "0")}`);
+      return;
+    }
+    applySnapshot(snapshot);
+    setSnapshotState(`RECALL ${slot.padStart(2, "0")}`);
+  });
+
+  controls.snapshotPurge.addEventListener("click", () => {
+    const slot = controls.snapshotSlot.value || "1";
+    snapshotStore[slot] = null;
+    persistSnapshots();
+    setSnapshotState(`PURGED ${slot.padStart(2, "0")}`);
+  });
 }
 
 function initAudio() {
@@ -223,4 +328,6 @@ function frame() {
 }
 
 buildGrid();
+restoreSnapshots();
+bindSnapshotActions();
 setInterval(frame, 120);

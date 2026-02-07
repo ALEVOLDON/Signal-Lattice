@@ -119,6 +119,28 @@ select:focus {
   accent-color: var(--sig);
 }
 
+.action-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.action-unit {
+  border: 1px solid var(--fg);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  padding: 7px 4px;
+  cursor: pointer;
+}
+
+.action-unit:hover,
+.action-unit:focus {
+  color: var(--sig);
+  border-color: var(--sig);
+  outline: 0;
+}
+
 .field-wrap {
   display: grid;
   grid-template-rows: auto 1fr auto;
