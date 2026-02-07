@@ -125,6 +125,10 @@ select:focus {
   gap: 6px;
 }
 
+.action-row.dual {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .action-unit {
   border: 1px solid var(--fg);
   background: transparent;
@@ -132,6 +136,10 @@ select:focus {
   font: inherit;
   padding: 7px 4px;
   cursor: pointer;
+}
+
+.hidden-input {
+  display: none;
 }
 
 .action-unit:hover,

@@ -33,6 +33,9 @@ const controls = {
   snapshotWrite: document.getElementById("snapshotWrite"),
   snapshotRecall: document.getElementById("snapshotRecall"),
   snapshotPurge: document.getElementById("snapshotPurge"),
+  snapshotExport: document.getElementById("snapshotExport"),
+  snapshotImport: document.getElementById("snapshotImport"),
+  snapshotImportFile: document.getElementById("snapshotImportFile"),
 };
 
 const cells = [];
@@ -174,6 +177,59 @@ function bindSnapshotActions() {
     snapshotStore[slot] = null;
     persistSnapshots();
     setSnapshotState(`PURGED ${slot.padStart(2, "0")}`);
+  });
+
+  controls.snapshotExport.addEventListener("click", () => {
+    try {
+      const payload = {
+        schema: "signal-lattice-snapshot-pack-v1",
+        exportedAt: new Date().toISOString(),
+        slots: snapshotStore,
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      anchor.href = url;
+      anchor.download = `signal-lattice-snapshots-${stamp}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setSnapshotState("EXPORT OK");
+    } catch (_err) {
+      setSnapshotState("EXPORT FAIL");
+    }
+  });
+
+  controls.snapshotImport.addEventListener("click", () => {
+    controls.snapshotImportFile.click();
+  });
+
+  controls.snapshotImportFile.addEventListener("change", async (event) => {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const slots = parsed && parsed.slots ? parsed.slots : null;
+      if (!slots || typeof slots !== "object") {
+        setSnapshotState("IMPORT FAIL");
+        input.value = "";
+        return;
+      }
+
+      for (const slot of ["1", "2", "3"]) {
+        snapshotStore[slot] = slots[slot] || null;
+      }
+      persistSnapshots();
+      setSnapshotState("IMPORT OK");
+    } catch (_err) {
+      setSnapshotState("IMPORT FAIL");
+    } finally {
+      input.value = "";
+    }
   });
 }
 
